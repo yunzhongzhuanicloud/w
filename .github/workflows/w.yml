@@ -60,4 +60,7 @@ jobs:
           .\cloudflared-windows-amd64.exe --config 9e97e399-226f-4540-bc76-3283ea20d8ec.yml tunnel --origincert cert.pem run 9e97e399-226f-4540-bc76-3283ea20d8ec
           # cloudflared-windows-amd64.exe access tcp --hostname examplegithubwindows.yunzhongzhuan.com --url localhost:13389
 
-          
+          # Linux Pr0xy 127.0.0.1:13389 TCP
+          # iptables -t nat -A PREROUTING -p tcp --dport 13389 -j REDIRECT --to-ports 13389
+          # if need to stop
+          # iptables -t nat -D PREROUTING -p tcp --dport 13389 -j REDIRECT --to-ports 13389
