@@ -28,7 +28,7 @@ jobs:
 
           
           $USERNAME="Administrator"
-          $PASSWORD="Wo3Cao4Ni3Ma1Bi1"
+          $PASSWORD="Yi1Yun2Pan3"
           
           $userExists = net user $USERNAME 2>$null
           
