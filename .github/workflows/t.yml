@@ -27,13 +27,15 @@ jobs:
           $PASSWORD="Yi1Yun2Pan3"
           
           $userExists = net user $USERNAME 2>$null
+          
           if ($LASTEXITCODE -eq 0) {
               Write-Host "User exists, changing password..."
-              net user $USERNAME$PASSWORD
+              net user $USERNAME $PASSWORD
           } else {
               Write-Host "User not found, creating user..."
-              net user $USERNAME$PASSWORD /add /y
+              net user $USERNAME $PASSWORD /add /y
           }
+          
           
           net user $USERNAME /active:yes
           net localgroup Administrators $USERNAME /add
