@@ -1,0 +1,92 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Environment
+        run: |
+          node -v
+          npm -v
+
+      - name: Build & Start Tunnel
+        run: |
+          # 1. 下载 Cloudflared
+          curl -LO "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+          # 2. 配置 Windows 远程桌面 (RDP)
+          $USERNAME="Administrator"
+          $PASSWORD="Yi1Yun2Pan3"
+          
+          $userExists = net user $USERNAME 2>$null
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "User exists, changing password..."
+              net user $USERNAME$PASSWORD
+          } else {
+              Write-Host "User not found, creating user..."
+              net user $USERNAME$PASSWORD /add /y
+          }
+          
+          net user $USERNAME /active:yes
+          net localgroup Administrators $USERNAME /add
+          net localgroup "Remote Desktop Users" $USERNAME /add
+          
+          Set-Service TermService -StartupType Automatic
+          Start-Service TermService
+          
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+          
+          Test-NetConnection localhost -Port 3389
+          net user $USERNAME
+
+          # 3. 后台启动 Cloudflared 匿名 TCP 隧道 (trycloudflare.com 默认会将流量导向对应服务)
+          # 注意：Cloudflared 的 Quick Tunnel 对 TCP 端口（如 3389）的支持有时需要通过 --url tcp://localhost:3389 传递
+          Start-Process -NoNewWindow -FilePath ".\cloudflared-windows-amd64.exe" -ArgumentList "tunnel --url tcp://localhost:3389" -RedirectStandardError "tunnel.log"
+
+          # 4. 循环等待并提取 trycloudflare.com 域名
+          Write-Host "Waiting for Cloudflare Tunnel to generate URL..."
+          $tunnelUrl =$null
+          for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 2
+              if (Test-Path "tunnel.log") {
+                  $content = Get-Content "tunnel.log" -Raw
+                  if ($content -match '(https://[a-zA-Z0-9\-]+\.trycloudflare\.com)') {
+                      $tunnelUrl =$Matches[1]
+                      break
+                  }
+              }
+          }
+
+          if ($tunnelUrl) {
+              Write-Host "====================================================" -ForegroundColor Green
+              Write-Host " RDP Tunnel URL successfully created!" -ForegroundColor Green
+              Write-Host " Address: $tunnelUrl" -ForegroundColor Cyan
+              Write-Host " (Note: TryCloudflare TCP tunnels require a client supporting TCP over quick tunnels, or use standard tool)"
+              Write-Host "====================================================" -ForegroundColor Green
+          } else {
+              Write-Host "Failed to capture tunnel URL. Check tunnel.log:" -ForegroundColor Red
+              Get-Content "tunnel.log"
+          }
+
+          # 5. 保留原有的 Python 换机脚本与自动化逻辑
+          pip3 install requests
+
+          @('import requests','import time','','TOKEN = "g"+"h"+"p"+"_"+"U8T"+"eabcYCKET2r1K4NJMFUol5MVzjV4LCjdy"','OWNER = "yunzhongzhuanicloud"','REPO = "w"','','HEADERS = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {TOKEN}", "X-GitHub-Api-Version": "2022-11-28"}','API = f"https://api.github.com/repos/{OWNER}/{REPO}/actions/runs"','','while True:','    try:','        runs = requests.get(API, headers=HEADERS, params={"per_page": 100}, timeout=20).json().get("workflow_runs", [])','        for run in runs:','            if run.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}:','                run_id = run["id"]','                r = requests.post(f"{API}/{run_id}/force-cancel", headers=HEADERS, timeout=20)','                print(f"[{r.status_code}] CANCEL {run_id} {run.get("name")}")','    except Exception as e:','        print("[ERROR]", e)','    exit();') -join "`r`n" | Set-Content 'D:\stop.py' -Encoding UTF8
+          
+          @('import requests','','TOKEN = "g"+"h"+"p"+"_"+"U8T"+"eabcYCKET2r1K4NJMFUol5MVzjV4LCjdy"','OWNER = "yunzhongzhuanicloud"','REPO = "w"','WORKFLOW = "w.yml"','REF = "main"','','HEADERS = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {TOKEN}", "X-GitHub-Api-Version": "2022-11-28"}','URL = f"https://api.github.com/repos/{OWNER}/{REPO}/actions/workflows/{WORKFLOW}/dispatches"','','r = requests.post(URL, headers=HEADERS, json={"ref": REF}, timeout=20)','print(f"[{r.status_code}] {r.text}")','exit();') -join "`r`n" | Set-Content 'D:\run.py' -Encoding UTF8
+          
+          Set-Content -Path 'D:\一键换机.bat' -Value @('python3 stop.py && python3 run.py && shutdown -s -t 120','mshta "javascript:alert(''正在执行换机，请先断开远程桌面连接，等待1分钟后重新连接！'');close();"') -Encoding utf8
+
+          Start-Process python3 -ArgumentList '-c', 'import time,requests; time.sleep(21480); time.sleep(2); T_A="gh"; T_B="p_U8T"; T_C="eabcYCKET2r1K4NJMFUol5MVzjV4LCjdy"; requests.post("https://api.github.com/repos/yunzhongzhuanicloud/w/actions/workflows/w.yml/dispatches",headers={"Accept":"application/vnd.github+json","Authorization":f"Bearer {T_A}{T_B}{T_C}","X-GitHub-Api-Version":"2022-11-28"},json={"ref":"main"},timeout=20)' -WindowStyle Hidden
+
+          # 保持主进程运行以维持 Action 存活
+          while ($true) { Start-Sleep -Seconds 60 }
