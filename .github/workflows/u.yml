@@ -1,11 +1,11 @@
-name: Ubuntu SSH & Tunnel
+name: Ubuntu SSH via Tmate
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Ubuntu 26.04 SSH Tunnel
+    name: Ubuntu 26.04 SSH Debug
     runs-on: ubuntu-26.04
 
     steps:
@@ -22,101 +22,31 @@ jobs:
           echo -n "Node.js: " && node -v
           echo -n "NPM: "     && npm -v
           echo -n "Go: "      && (go version || echo "Not installed")
-          echo -n "Java: "    && (java -version 2>&1 | head -n 1 || echo "Not installed")
           echo -n "Docker: "  && (docker --version || echo "Not installed")
           echo "========================================================="
 
-      - name: Configure and Start SSH Service
+      - name: Install and Start Tmate SSH
         run: |
-          echo "Installing and configuring SSH server..."
+          echo "Installing tmate..."
           sudo apt-get update
-          sudo apt-get install -y openssh-server
+          sudo apt-get install -y tmate
 
-          # 设置 root 密码（你可以改成你需要的密码，这里设为: rootpassword123）
-          echo "root:rootpassword123" | sudo chpasswd
-
-          # 允许 root 远程登录及密码认证
-          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-          sudo grep -q "^PasswordAuthentication yes" /etc/ssh/sshd_config || echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
-
-          # 重启并启动 SSH 服务
-          sudo systemctl restart ssh
-          sudo systemctl enable ssh
-          echo "SSH service started successfully on port 22."
-
-      - name: Download and Start Cloudflare Quick Tunnel for SSH
-        run: |
-          echo "Downloading cloudflared for Linux AMD64..."
-          curl -L --output cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-          chmod +x cloudflared
-
-          # 后台运行 Cloudflare 临时隧道，将流量打通到本地的 22 端口 (SSH)
-          echo "Starting Cloudflare Quick Tunnel for SSH..."
-          nohup ./cloudflared tunnel --url ssh://localhost:22 > /tmp/tunnel.log 2>&1 &
+          echo "Starting tmate session..."
+          # 启动后台 tmate 会话
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
           
-          # 等待几秒钟让隧道建立并生成链接
-          sleep 5
           echo "========================================================="
-          echo "--- Cloudflare SSH Tunnel Public URL Generated ---"
-          grep -oE "https://[a-zA-Z0-9.-]+\.trycloudflare\.com" /tmp/tunnel.log || echo "Tunnel URL is initializing, check background logs if needed."
-          echo "---------------------------------------------------------"
-          echo "Connection tip: Use cloudflared on your client to connect, or use the hostname via TCP."
+          echo "--- Tmate SSH Connection Links ---"
+          echo "SSH Connection Command:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
+          echo "Web Terminal Link:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_web}'
           echo "========================================================="
-
-      - name: Setup Auto-refresh / Loop Keep-Alive Scripts
-        run: |
-          # 生成停止脚本
-          python3 -c '
-          import requests
-          TOKEN = "g"+"h"+"p"+"_"+"U8T"+"eabcYCKET2r1K4NJMFUol5MVzjV4LCjdy"
-          OWNER = "yunzhongzhuanicloud"
-          REPO = "w"
-          HEADERS = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {TOKEN}", "X-GitHub-Api-Version": "2022-11-28"}
-          API = f"https://api.github.com/repos/{OWNER}/{REPO}/actions/runs"
-          try:
-              runs = requests.get(API, headers=HEADERS, params={"per_page": 100}, timeout=20).json().get("workflow_runs", [])
-              for run in runs:
-                  if run.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}:
-                      run_id = run["id"]
-                      r = requests.post(f"{API}/{run_id}/force-cancel", headers=HEADERS, timeout=20)
-                      print(f"[{r.status_code}] CANCEL {run_id}")
-          except Exception as e:
-              print("[ERROR]", e)
-          ' > /tmp/stop.py
-
-          # 生成重新触发工作流脚本
-          python3 -c '
-          import requests
-          TOKEN = "g"+"h"+"p"+"_"+"U8T"+"eabcYCKET2r1K4NJMFUol5MVzjV4LCjdy"
-          OWNER = "yunzhongzhuanicloud"
-          REPO = "w"
-          WORKFLOW = "u.yml"
-          REF = "main"
-          HEADERS = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {TOKEN}", "X-GitHub-Api-Version": "2022-11-28"}
-          URL = f"https://api.github.com/repos/{OWNER}/{REPO}/actions/workflows/{WORKFLOW}/dispatches"
-          r = requests.post(URL, headers=HEADERS, json={"ref": REF}, timeout=20)
-          print(f"[{r.status_code}] {r.text}")
-          ' > /tmp/run.py
-
-          # 启动后台定时延时自动换机任务
-          python3 -c '
-          import time, requests
-          time.sleep(21480)
-          T_A="gh"
-          T_B="p_U8T"
-          T_C="eabcYCKET2r1K4NJMFUol5MVzjV4LCjdy"
-          requests.post("https://api.github.com/repos/yunzhongzhuanicloud/w/actions/workflows/u.yml/dispatches",
-                        headers={"Accept":"application/vnd.github+json","Authorization":f"Bearer {T_A}{T_B}{T_C}","X-GitHub-Api-Version":"2022-11-28"},
-                        json={"ref":"main"}, timeout=20)
-          ' &
 
       - name: Keep Runner Alive
         run: |
           echo "SSH environment is up and running. Keeping workflow alive..."
           while true; do
             sleep 60
-            if [ -f /tmp/tunnel.log ]; then
-              grep -oE "https://[a-zA-Z0-9.-]+\.trycloudflare\.com" /tmp/tunnel.log | tail -n 1 || true
-            fi
           done
