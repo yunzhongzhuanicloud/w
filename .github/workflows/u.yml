@@ -1,52 +1,21 @@
-name: Ubuntu SSH via Tmate
+name: Ubuntu SSH Debug
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Ubuntu 26.04 SSH Debug
     runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log Common Environment Tools
+      - name: Install tmate & Start
         run: |
-          echo "==================== SYSTEM & KERNEL ===================="
-          uname -a
-          cat /etc/os-release
-          echo "==================== PROGRAMMING LANGUAGES ================="
-          echo -n "Python3: " && python3 --version
-          echo -n "Node.js: " && node -v
-          echo -n "NPM: "     && npm -v
-          echo -n "Go: "      && (go version || echo "Not installed")
-          echo -n "Docker: "  && (docker --version || echo "Not installed")
-          echo "========================================================="
-
-      - name: Install and Start Tmate SSH
-        run: |
-          echo "Installing tmate..."
           sudo apt-get update
           sudo apt-get install -y tmate
-
-          echo "Starting tmate session..."
-          # 启动后台 tmate 会话
-          tmate -S /tmp/tmate.sock new-session -d
-          tmate -S /tmp/tmate.sock wait tmate-ready
           
-          echo "========================================================="
-          echo "--- Tmate SSH Connection Links ---"
-          echo "SSH Connection Command:"
-          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
-          echo "Web Terminal Link:"
-          tmate -S /tmp/tmate.sock display -p '#{tmate_web}'
-          echo "========================================================="
-
-      - name: Keep Runner Alive
-        run: |
-          echo "SSH environment is up and running. Keeping workflow alive..."
-          while true; do
-            sleep 60
-          done
+          # 前台运行 tmate 10秒以便强制输出连接地址到日志
+          tmate -k -F &
+          sleep 10
