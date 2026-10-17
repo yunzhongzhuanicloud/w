@@ -1,0 +1,58 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Environment
+        run: |
+          node -v
+          npm -v
+
+      - name: Build & Start Tunnel
+        run: |
+
+          # 2. 配置 Windows 远程桌面 (RDP)
+          $USERNAME="Administrator"
+          $PASSWORD="Yi1Yun2Pan3"
+          
+          $userExists = net user $USERNAME 2>$null
+          
+          if ($LASTEXITCODE -eq 0) {
+              Write-Host "User exists, changing password..."
+              net user $USERNAME $PASSWORD
+          } else {
+              Write-Host "User not found, creating user..."
+              net user $USERNAME $PASSWORD /add /y
+          }
+          
+          
+          net user $USERNAME /active:yes
+          net localgroup Administrators $USERNAME /add
+          net localgroup "Remote Desktop Users" $USERNAME /add
+          
+          Set-Service TermService -StartupType Automatic
+          Start-Service TermService
+          
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+          
+          Test-NetConnection localhost -Port 3389
+          net user $USERNAME
+
+          # 1. 下载 Cloudflared
+          curl -LO "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+          [IO.File]::WriteAllText(".\cert.pem","-----BEGIN ARGO TUNNEL TOKEN-----`eyJ6b25lSUQiOiJhYWUxNWZkYzc5MzA1Mzg2MTQxODQ4MGRlYjFmZGFjYiIsImFj`Y291bnRJRCI6ImQ0Mjk5NmQ3ZDA2YTIzY2Y2MzNmYzMxMjc3ZDBmZmQ2IiwiYXBp`VG9rZW4iOiJjZnV0XzhYdE40ZDcwUFdPcG5KQTVBYjNwaEtnUVRTejdSYXhRenAx`YWlQbHBmZmJkODNlMSJ9`n-----END ARGO TUNNEL TOKEN-----`n")
+          '{"AccountTag":"d42996d7d06a23cf633fc31277d0ffd6","TunnelSecret":"DFzon2UL8VSzet69AEs2pDEndugvporKz/j+IeRxQzE=","TunnelID":"940808a4-8b7d-491d-a603-ce136c97c141","Endpoint":""}' | Set-Content -Encoding utf8 .\940808a4-8b7d-491d-a603-ce136c97c141.json
+          "tunnel: 940808a4-8b7d-491d-a603-ce136c97c141`ncredentials-file: 940808a4-8b7d-491d-a603-ce136c97c141.json`n`ningress:`n  - hostname: w.baixiong.kdns.fr`n    service: tcp://localhost:3389`n`n  - service: http_status:404" | Set-Content -Encoding utf8 .\940808a4-8b7d-491d-a603-ce136c97c141.yml
+          
+          .\cloudflared-windows-amd64.exe --config 940808a4-8b7d-491d-a603-ce136c97c141.yml tunnel --origincert cert.pem run 940808a4-8b7d-491d-a603-ce136c97c141
